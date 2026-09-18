@@ -108,7 +108,7 @@ final class Registry
                 ),
             ], disabled: ['rust-analyzer']),
 
-            new Language('PHP', [$phpantom, $symfony], disabled: ['intelephense', 'phptools']),
+            new Language('PHP', [$phpantom, $symfony], disabled: ['phpactor', 'intelephense', 'phptools']),
 
             ...array_map(
                 static fn (string $lang) => new Language($lang, [$tsgo, $biome], disabled: ['vtsls', 'typescript-language-server', 'eslint']),
