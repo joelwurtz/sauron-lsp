@@ -9,11 +9,13 @@ namespace Sauron;
  */
 final class DevExtension
 {
+    /** @param list<Prerequisite> $prerequisites */
     public function __construct(
         public string $id,
         public string $repository,
         public string $path = '.',
         public string $reason = '',
+        public array $prerequisites = [],
     ) {
     }
 

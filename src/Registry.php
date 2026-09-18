@@ -66,6 +66,13 @@ final class Registry
                 repository: 'https://github.com/symfony/language-tools.git',
                 path: 'editor/zed',
                 reason: 'not published in Zed\'s registry yet',
+                prerequisites: [
+                    new Prerequisite(
+                        label: 'Rust target wasm32-wasip2',
+                        check: 'rustup target list --installed | grep -qx wasm32-wasip2',
+                        command: 'rustup target add wasm32-wasip2',
+                    ),
+                ],
             ),
             initializationOptions: [
                 'workspaceTrust' => true,

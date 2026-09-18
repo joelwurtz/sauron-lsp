@@ -164,6 +164,18 @@ function install(#[AsOption(description: 'Print the commands without running the
         io()->section($extension->id . ' (dev extension)');
         io()->writeln(\sprintf(' <comment>%s</>', $extension->reason));
 
+        foreach ($extension->prerequisites as $prerequisite) {
+            if ($prerequisite->isSatisfied()) {
+                continue;
+            }
+
+            io()->writeln(\sprintf(' missing %s: %s', $prerequisite->label, $prerequisite->command));
+
+            if (!$dryRun) {
+                run($prerequisite->command, context()->withAllowFailure());
+            }
+        }
+
         if (!$dryRun) {
             if ($extension->isCloned()) {
                 run('git pull --ff-only', context()->withAllowFailure()->withWorkingDirectory($extension->checkoutPath()));
@@ -222,11 +234,32 @@ function doctor(): int
 
     io()->section('Dev extensions');
     foreach (Registry::devExtensions() as $extension) {
+        foreach ($extension->prerequisites as $prerequisite) {
+            $satisfied = $prerequisite->isSatisfied();
+
+            if (!$satisfied) {
+                ++$problems;
+            }
+
+            io()->writeln(\sprintf(
+                ' %s %-24s %s',
+                $satisfied ? '<info>OK</>  ' : '<fg=red>MISS</>',
+                $extension->id,
+                $prerequisite->label,
+            ));
+        }
+
+        $loaded = is_dir($_SERVER['HOME'] . '/.local/share/zed/extensions/installed/' . $extension->id);
+
+        if (!$loaded) {
+            ++$problems;
+        }
+
         io()->writeln(\sprintf(
             ' %s %-24s %s',
-            $extension->isCloned() ? '<info>OK</>  ' : '<comment>TODO</>',
+            $loaded ? '<info>OK</>  ' : '<fg=red>MISS</>',
             $extension->id,
-            $extension->extensionPath(),
+            $loaded ? 'loaded by Zed' : 'not loaded: run `zed: install dev extension` on ' . $extension->extensionPath(),
         ));
     }
 

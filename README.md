@@ -59,10 +59,18 @@ autoload path, so the indexer has to be told about them.
 
 **Symfony — `symfony-language-tools`.** The official LSP, running alongside
 phpantom rather than replacing it, and also claiming Twig, YAML, JSON, XML and
-JS/TS. It is not in Zed's registry yet, so `sauron:install` clones it to
-`~/.local/share/sauron-lsp/extensions/` and you finish with
-`zed: install dev extension`. It boots the application kernel, hence
-`workspaceTrust`.
+JS/TS. It boots the application kernel, hence `workspaceTrust`.
+
+It is the one server that cannot be installed hands-free: it is not in Zed's
+registry, so `auto_install_extensions` has no reach. `sauron:install` adds the
+`wasm32-wasip2` Rust target it builds against and clones it to
+`~/.local/share/sauron-lsp/extensions/`, then you finish in Zed with
+`zed: install dev extension` pointed at the `editor/zed/` directory.
+`sauron:doctor` reports it as `MISS` until Zed has actually loaded it.
+
+It also stays silent on purpose outside a full-stack Symfony application: it
+discovers projects from their `composer.json` and provides no features when a
+worktree has none.
 
 **TypeScript — `typescript-ls` from the `tsgo` extension.** The Go-native
 TypeScript 7 compiler, with `biome` for lint and format. `vtsls`,
