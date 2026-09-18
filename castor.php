@@ -2,10 +2,12 @@
 
 namespace Sauron;
 
+use Castor\Attribute\AsArgument;
 use Castor\Attribute\AsOption;
 use Castor\Attribute\AsTask;
 use Sauron\Process\RunningProcess;
 use Sauron\Process\Scanner;
+use Sauron\Symfony\ProjectConfig;
 use Sauron\Zed\Generator;
 use Sauron\Zed\Jsonc;
 
@@ -190,6 +192,63 @@ function install(#[AsOption(description: 'Print the commands without running the
         io()->writeln(' In Zed: run <info>zed: install dev extension</> and select:');
         io()->writeln(' <info>' . $extension->extensionPath() . '</>');
     }
+
+    return 0;
+}
+
+#[AsTask('config', namespace: 'symfony', description: 'Build the .symfony-lsp.json a project needs to run PHP in Docker')]
+function symfony_config(
+    #[AsArgument(description: 'Project to inspect')] string $project = '.',
+    #[AsOption(description: 'Write the file instead of printing it')] bool $write = false,
+): int {
+    $root = realpath($project);
+
+    if (false === $root || !is_dir($root)) {
+        io()->error(\sprintf('No such directory: %s', $project));
+
+        return 1;
+    }
+
+    $applications = ProjectConfig::discover($root);
+
+    if ([] === $applications) {
+        io()->warning('No Symfony application found here, so the language server would stay idle anyway.');
+
+        return 0;
+    }
+
+    $rows = [];
+    foreach ($applications as $application) {
+        $resolved = ProjectConfig::resolve($root, $application);
+
+        $rows[] = [
+            $application,
+            $resolved['service'] ?? '<fg=yellow>none</>',
+            $resolved['containerRoot'] ?? '<fg=yellow>runs on the host</>',
+        ];
+    }
+
+    io()->table(['Application', 'Compose service', 'Path in container'], $rows);
+
+    $config = ProjectConfig::build($root);
+    $json = json_encode($config, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR) . "\n";
+    $path = $root . '/.symfony-lsp.json';
+
+    if (!$write) {
+        io()->writeln($json);
+        io()->note(\sprintf('Add --write to save this to %s', short_path($path)));
+
+        return 0;
+    }
+
+    if (is_file($path) && !io()->confirm(\sprintf('%s already exists, overwrite it?', short_path($path)), false)) {
+        return 0;
+    }
+
+    fs()->dumpFile($path, $json);
+    io()->success(\sprintf('Written to %s', short_path($path)));
+    io()->writeln(' Start the containers before opening the project, and check the command with:');
+    io()->writeln(\sprintf('   <info>docker compose exec -T %s php -v</>', $rows[0][1]));
 
     return 0;
 }

@@ -28,6 +28,7 @@ castor zed:generate            # apply it (keeps a timestamped backup)
 castor sauron:install          # install what Zed cannot fetch on its own
 castor sauron:doctor           # check binaries, config files, and extension slugs
 castor sauron:memory           # what every running server costs, --processes for detail
+castor symfony:config <path>   # build the .symfony-lsp.json a Docker project needs
 ```
 
 `sauron:memory` reports PSS rather than RSS: several servers of the same kind
@@ -77,6 +78,22 @@ registry, so `auto_install_extensions` has no reach. `sauron:install` adds the
 It also stays silent on purpose outside a full-stack Symfony application: it
 discovers projects from their `composer.json` and provides no features when a
 worktree has none.
+
+When PHP runs in a container, it needs `phpCommand` and `containerProjectRoot`
+in a `.symfony-lsp.json` at the project root. That file is per-project, so it
+lives in the project rather than here, and `symfony:config` builds it: it finds
+the Symfony applications the same way the server does, reads the compose files
+to see which service can run PHP and where it mounts the tree, and prints the
+result. Pass `--write` to save it.
+
+Picking the service takes two signals, because neither is enough alone. The
+image or build path leaf says which container has PHP at all — read from the
+leaf only, since paths routinely run through vendor directories like
+`castor-php/`. Among those, a working directory holding a `composer.json` marks
+the one that actually runs an application; workers, builders and test variants
+are ranked below their base service. `docker compose config` would be more
+faithful than reading the YAML, but it resolves variables from the environment
+the stack is usually started with and returns nothing without them.
 
 **TypeScript — `typescript-ls` from the `tsgo` extension.** The Go-native
 TypeScript 7 compiler, with `biome` for lint and format. `vtsls`,
