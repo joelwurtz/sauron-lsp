@@ -4,6 +4,8 @@ namespace Sauron;
 
 final class Server
 {
+    private const EXTRA_BIN_DIRS = ['~/go/bin', '~/.cargo/bin', '~/.local/bin'];
+
     /**
      * @param string            $id           language server id as Zed knows it (not the extension slug)
      * @param string|null       $extension    Zed extension slug providing it, null when built into Zed
@@ -74,7 +76,21 @@ final class Server
 
         $found = trim((string) shell_exec(\sprintf('command -v %s 2>/dev/null', escapeshellarg($this->binary))));
 
-        return '' === $found ? $this->binary : $found;
+        if ('' !== $found) {
+            return $found;
+        }
+
+        // `go install` and `cargo install` land in directories that are not
+        // always on PATH, and Zed does not inherit a login shell anyway.
+        foreach (self::EXTRA_BIN_DIRS as $dir) {
+            $candidate = str_replace('~', $_SERVER['HOME'], $dir) . '/' . $this->binary;
+
+            if (is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $this->binary;
     }
 
     public function isInstalled(): bool

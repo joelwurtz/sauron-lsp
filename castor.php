@@ -7,6 +7,7 @@ use Castor\Attribute\AsTask;
 use Sauron\Zed\Generator;
 use Sauron\Zed\Jsonc;
 
+use function Castor\context;
 use function Castor\fs;
 use function Castor\guard_min_version;
 use function Castor\import;
@@ -128,7 +129,7 @@ function install(#[AsOption(description: 'Print the commands without running the
         io()->writeln(' ' . $server->install);
 
         if (!$dryRun) {
-            run($server->install, allowFailure: true);
+            run($server->install, context()->withAllowFailure());
         }
     }
 
@@ -155,10 +156,10 @@ function install(#[AsOption(description: 'Print the commands without running the
 
         if (!$dryRun) {
             if ($extension->isCloned()) {
-                run('git pull --ff-only', path: $extension->checkoutPath(), allowFailure: true);
+                run('git pull --ff-only', context()->withAllowFailure()->withWorkingDirectory($extension->checkoutPath()));
             } else {
                 fs()->mkdir(\dirname($extension->checkoutPath()));
-                run(\sprintf('git clone --depth 1 %s %s', $extension->repository, $extension->checkoutPath()), allowFailure: true);
+                run(\sprintf('git clone --depth 1 %s %s', $extension->repository, $extension->checkoutPath()), context()->withAllowFailure());
             }
         }
 
