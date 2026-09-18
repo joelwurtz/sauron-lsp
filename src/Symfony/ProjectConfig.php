@@ -170,7 +170,10 @@ final class ProjectConfig
             }
 
             $projects[$root] = [
-                'phpCommand' => ['docker', 'compose', 'exec', '-T', $resolved['service'], 'php'],
+                // `exec` needs the stack already up, and an editor opens a project
+                // long before that. A disposable container costs ~0.4s and works
+                // either way; --no-deps keeps it from starting the whole stack.
+                'phpCommand' => ['docker', 'compose', 'run', '--rm', '--no-deps', '-T', $resolved['service'], 'php'],
                 'containerProjectRoot' => $resolved['containerRoot'],
             ];
         }

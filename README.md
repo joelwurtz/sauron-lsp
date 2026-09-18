@@ -101,6 +101,12 @@ elsewhere, so running it inside a project that builds its stack with
 `castor-php/docker` regenerates that project's compose files from definitions
 that were never loaded, emptying them.
 
+The command is `docker compose run --rm --no-deps`, not `exec`. The server boots
+the application to load routes and services, and `exec` needs the stack already
+running — an editor opens a project long before that, and the bridge then fails
+with `status 1`. A disposable container costs about 0.4s and works either way,
+and `--no-deps` keeps it from starting the rest of the stack.
+
 Picking the compose service takes two signals, because neither is enough alone.
 The image or build path leaf says which container has PHP at all — read from the
 leaf only, since paths routinely run through vendor directories like
