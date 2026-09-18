@@ -240,6 +240,16 @@ function symfony_wrap(
         return 1;
     }
 
+    // The launcher ran castor from its own directory to keep a castor-managed
+    // project from regenerating its compose files. The server itself must come
+    // back to the project: it inherits this cwd, and resolves `docker compose`
+    // from it.
+    if (!chdir($project)) {
+        fwrite(\STDERR, \sprintf("[sauron] cannot enter %s\n", $project));
+
+        return 1;
+    }
+
     // Replaces this process, so Zed keeps talking to the same file descriptors.
     pcntl_exec($binary, \array_slice($_SERVER['argv'], \array_search('--', $_SERVER['argv'], true) ?: \count($_SERVER['argv'])));
 
