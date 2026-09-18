@@ -63,7 +63,6 @@ final class Registry
         $symfony = new Server(
             id: 'symfony-language-tools',
             runtime: Runtime::Php,
-            process: 'symfony-lsp',
             devExtension: new DevExtension(
                 id: 'symfony-language-tools',
                 repository: 'https://github.com/symfony/language-tools.git',
@@ -77,9 +76,15 @@ final class Registry
                     ),
                 ],
             ),
+            // Zed starts a server in the worktree it serves, so the launcher can
+            // write that project's Docker configuration before exec'ing the
+            // real binary.
+            binary: '~/.local/share/sauron-lsp/bin/symfony-lsp',
+            install: 'castor lsp:symfony:wrapper',
             initializationOptions: [
                 'workspaceTrust' => true,
             ],
+            process: 'symfony-lsp',
             note: 'official Symfony LSP, self-contained binary; boots the kernel, so it only trusts workspaces you approve',
         );
 

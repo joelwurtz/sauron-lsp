@@ -28,7 +28,7 @@ castor zed:generate            # apply it (keeps a timestamped backup)
 castor sauron:install          # install what Zed cannot fetch on its own
 castor sauron:doctor           # check binaries, config files, and extension slugs
 castor sauron:memory           # what every running server costs, --processes for detail
-castor symfony:config <path>   # build the .symfony-lsp.json a Docker project needs
+castor lsp:symfony:wrapper     # (re)install the launcher Zed starts instead of symfony-lsp
 ```
 
 `sauron:memory` reports PSS rather than RSS: several servers of the same kind
@@ -79,15 +79,30 @@ It also stays silent on purpose outside a full-stack Symfony application: it
 discovers projects from their `composer.json` and provides no features when a
 worktree has none.
 
-When PHP runs in a container, it needs `phpCommand` and `containerProjectRoot`
-in a `.symfony-lsp.json` at the project root. That file is per-project, so it
-lives in the project rather than here, and `symfony:config` builds it: it finds
-the Symfony applications the same way the server does, reads the compose files
-to see which service can run PHP and where it mounts the tree, and prints the
-result. Pass `--write` to save it.
+When PHP runs in a container, the server needs `phpCommand` and
+`containerProjectRoot` from a `.symfony-lsp.json` at the project root. Rather
+than maintaining that file by hand in every repository, Zed starts a launcher
+instead of the server: `lsp.symfony-language-tools.binary.path` points at
+`~/.local/share/sauron-lsp/bin/symfony-lsp`, which writes the configuration for
+whatever project it was started in and then becomes the real binary through
+`pcntl_exec`, keeping Zed on the same file descriptors.
 
-Picking the service takes two signals, because neither is enough alone. The
-image or build path leaf says which container has PHP at all — read from the
+It works because Zed starts a language server in the worktree it serves, so the
+launcher reads the project from its own `$PWD`. The file it writes is added to
+`.git/info/exclude`, which is local to the checkout and shared by its worktrees:
+the configuration is yours, not the team's. A file already tracked by git is
+left alone.
+
+Two things the launcher has to be careful about. Nothing may reach stdout, which
+is the LSP stream, so every diagnostic goes to stderr prefixed with `[sauron]`.
+And castor runs from this repository rather than from the project: castor loads
+the local plugins of the current directory even when `--castor-file` points
+elsewhere, so running it inside a project that builds its stack with
+`castor-php/docker` regenerates that project's compose files from definitions
+that were never loaded, emptying them.
+
+Picking the compose service takes two signals, because neither is enough alone.
+The image or build path leaf says which container has PHP at all — read from the
 leaf only, since paths routinely run through vendor directories like
 `castor-php/`. Among those, a working directory holding a `composer.json` marks
 the one that actually runs an application; workers, builders and test variants

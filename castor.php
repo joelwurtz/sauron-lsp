@@ -2,12 +2,11 @@
 
 namespace Sauron;
 
-use Castor\Attribute\AsArgument;
 use Castor\Attribute\AsOption;
 use Castor\Attribute\AsTask;
 use Sauron\Process\RunningProcess;
 use Sauron\Process\Scanner;
-use Sauron\Symfony\ProjectConfig;
+use Sauron\Symfony\Wrapper;
 use Sauron\Zed\Generator;
 use Sauron\Zed\Jsonc;
 
@@ -196,61 +195,57 @@ function install(#[AsOption(description: 'Print the commands without running the
     return 0;
 }
 
-#[AsTask('config', namespace: 'symfony', description: 'Build the .symfony-lsp.json a project needs to run PHP in Docker')]
-function symfony_config(
-    #[AsArgument(description: 'Project to inspect')] string $project = '.',
-    #[AsOption(description: 'Write the file instead of printing it')] bool $write = false,
-): int {
-    $root = realpath($project);
+#[AsTask('wrapper', namespace: 'lsp:symfony', description: 'Install the launcher Zed starts instead of symfony-lsp')]
+function symfony_wrapper(): int
+{
+    $binary = Wrapper::serverBinary();
 
-    if (false === $root || !is_dir($root)) {
-        io()->error(\sprintf('No such directory: %s', $project));
+    if (null === $binary) {
+        io()->error('symfony-lsp is not installed yet. Open a Symfony project in Zed once so the extension downloads it.');
 
         return 1;
     }
 
-    $applications = ProjectConfig::discover($root);
+    $path = Wrapper::launcherPath();
+    fs()->mkdir(\dirname($path));
+    fs()->dumpFile($path, Wrapper::launcher(__DIR__ . '/castor.php') . "\n");
+    fs()->chmod($path, 0o755);
 
-    if ([] === $applications) {
-        io()->warning('No Symfony application found here, so the language server would stay idle anyway.');
-
-        return 0;
-    }
-
-    $rows = [];
-    foreach ($applications as $application) {
-        $resolved = ProjectConfig::resolve($root, $application);
-
-        $rows[] = [
-            $application,
-            $resolved['service'] ?? '<fg=yellow>none</>',
-            $resolved['containerRoot'] ?? '<fg=yellow>runs on the host</>',
-        ];
-    }
-
-    io()->table(['Application', 'Compose service', 'Path in container'], $rows);
-
-    $config = ProjectConfig::build($root);
-    $json = json_encode($config, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_THROW_ON_ERROR) . "\n";
-    $path = $root . '/.symfony-lsp.json';
-
-    if (!$write) {
-        io()->writeln($json);
-        io()->note(\sprintf('Add --write to save this to %s', short_path($path)));
-
-        return 0;
-    }
-
-    if (is_file($path) && !io()->confirm(\sprintf('%s already exists, overwrite it?', short_path($path)), false)) {
-        return 0;
-    }
-
-    fs()->dumpFile($path, $json);
-    io()->success(\sprintf('Written to %s', short_path($path)));
-    io()->writeln(' Start the containers before opening the project, and check the command with:');
-    io()->writeln(\sprintf('   <info>docker compose exec -T %s php -v</>', $rows[0][1]));
+    io()->success(\sprintf('Launcher written to %s', short_path($path)));
+    io()->writeln(\sprintf(' It will exec <info>%s</>', short_path($binary)));
+    io()->writeln(' Run `castor zed:generate` so Zed starts it instead of the server directly.');
 
     return 0;
+}
+
+#[AsTask('wrap', namespace: 'lsp:symfony', description: 'Internal: configure the project, then become symfony-lsp')]
+function symfony_wrap(
+    #[AsOption(description: 'Worktree Zed started the server in')] string $project = '',
+): int {
+    // Everything here talks to stderr: stdout belongs to the LSP stream.
+    $project = '' !== $project ? $project : getcwd();
+
+    try {
+        $result = Wrapper::configure($project);
+        fwrite(\STDERR, \sprintf("[sauron] %s: %s\n", $project, $result['reason']));
+    } catch (\Throwable $e) {
+        fwrite(\STDERR, \sprintf("[sauron] could not configure %s: %s\n", $project, $e->getMessage()));
+    }
+
+    $binary = Wrapper::serverBinary();
+
+    if (null === $binary) {
+        fwrite(\STDERR, "[sauron] symfony-lsp not found, cannot start the language server\n");
+
+        return 1;
+    }
+
+    // Replaces this process, so Zed keeps talking to the same file descriptors.
+    pcntl_exec($binary, \array_slice($_SERVER['argv'], \array_search('--', $_SERVER['argv'], true) ?: \count($_SERVER['argv'])));
+
+    fwrite(\STDERR, \sprintf("[sauron] could not exec %s\n", $binary));
+
+    return 1;
 }
 
 #[AsTask('memory', description: 'Show how much memory every running language server uses')]
@@ -417,6 +412,19 @@ function doctor(): int
             $extension->id,
             $loaded ? 'loaded by Zed' : 'not loaded: run `zed: install dev extension` on ' . $extension->extensionPath(),
         ));
+    }
+
+    io()->section('Launchers');
+    $launcher = Wrapper::launcherPath();
+
+    if (!is_file($launcher)) {
+        ++$problems;
+        io()->writeln(' <fg=red>MISS</> symfony-lsp              run `castor lsp:symfony:wrapper`');
+    } elseif (file_get_contents($launcher) !== Wrapper::launcher(__DIR__ . '/castor.php') . "\n") {
+        ++$problems;
+        io()->writeln(' <fg=red>OLD</>  symfony-lsp              stale, run `castor lsp:symfony:wrapper` again');
+    } else {
+        io()->writeln(\sprintf(' <info>OK</>   symfony-lsp              %s', short_path($launcher)));
     }
 
     io()->section('Config files');
