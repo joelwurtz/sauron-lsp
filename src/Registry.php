@@ -29,6 +29,36 @@ final class Registry
     }
 
     /**
+     * Servers turned off on every language. Zed's "..." fallback starts its own
+     * defaults behind ours, and some of them are expensive.
+     *
+     * @return array<string, string>
+     */
+    public static function globallyDisabled(): array
+    {
+        return [
+            // Attaches to PHP, so every PHP project pays for a Node process,
+            // Tailwind or not.
+            'tailwindcss-language-server' => 'attaches to PHP and every web language',
+            // Attaches to YAML from its own extension; docker-language-server
+            // already covers Docker Compose, natively.
+            'docker-compose' => 'superseded by docker-language-server',
+        ];
+    }
+
+    /**
+     * Extensions Zed should never install, keyed to why.
+     *
+     * @return array<string, string>
+     */
+    public static function unwanted(): array
+    {
+        return [
+            'docker-compose' => 'its Node server duplicates docker-language-server',
+        ];
+    }
+
+    /**
      * Top-level Zed settings required by servers below.
      *
      * @return array<string, mixed>

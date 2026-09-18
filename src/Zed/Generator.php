@@ -41,11 +41,17 @@ final class Generator
             }
         }
 
+        $globallyDisabled = array_keys(Registry::globallyDisabled());
+
         foreach (Registry::languages() as $language) {
             $languages[$language->zedName] = [
-                'language_servers' => $language->languageServers($globals),
+                'language_servers' => $language->languageServers($globals, $globallyDisabled),
                 ...$language->settings,
             ];
+        }
+
+        foreach (array_keys(Registry::unwanted()) as $slug) {
+            $extensions[$slug] = false;
         }
 
         ksort($extensions);
@@ -100,7 +106,8 @@ final class Generator
      */
     public function stale(array $current): array
     {
-        $disabled = [];
+        $disabled = array_fill_keys(array_keys(Registry::globallyDisabled()), true);
+
         foreach (Registry::languages() as $language) {
             foreach ($language->disabled as $id) {
                 $disabled[$id] = true;

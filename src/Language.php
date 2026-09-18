@@ -21,14 +21,16 @@ final class Language
     }
 
     /**
-     * @param list<Server> $globals
+     * @param list<Server>  $globals
+     * @param list<string>  $globallyDisabled
      *
      * @return list<string>
      */
-    public function languageServers(array $globals = []): array
+    public function languageServers(array $globals = [], array $globallyDisabled = []): array
     {
         $ids = array_map(static fn (Server $s) => $s->id, [...$this->servers, ...$globals]);
-        $ids = [...$ids, ...array_map(static fn (string $id) => '!' . $id, $this->disabled)];
+        $off = array_diff([...$this->disabled, ...$globallyDisabled], $ids);
+        $ids = [...$ids, ...array_map(static fn (string $id) => '!' . $id, $off)];
 
         if ($this->fallback) {
             $ids[] = '...';

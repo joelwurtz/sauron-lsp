@@ -31,6 +31,11 @@ castor sauron:memory           # what every running server costs, --processes fo
 castor lsp:symfony:wrapper     # (re)install the launcher Zed starts instead of symfony-lsp
 ```
 
+Servers Zed would otherwise start behind ours are listed in
+`Registry::globallyDisabled()`, with the reason. Tailwind is the expensive one:
+its Zed adapter attaches to PHP alongside every web language, so every PHP
+project paid for a Node process whether or not it used Tailwind.
+
 `sauron:memory` reports PSS rather than RSS: several servers of the same kind
 share pages, and RSS bills those pages to each of them. It also surfaces servers
 running outside the manifest — the `"..."` fallback lets Zed start its own
