@@ -29,6 +29,7 @@ final class Server
         public array $initializationOptions = [],
         public array $settings = [],
         public array $env = [],
+        public ?string $process = null,
         public string $note = '',
     ) {
     }
@@ -91,6 +92,12 @@ final class Server
         }
 
         return $this->binary;
+    }
+
+    /** What to look for in a running process to recognise this server. */
+    public function processPattern(): string
+    {
+        return $this->process ?? $this->binary ?? $this->id;
     }
 
     public function isInstalled(): bool

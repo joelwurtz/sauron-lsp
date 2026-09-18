@@ -4,6 +4,8 @@ namespace Sauron;
 
 use Castor\Attribute\AsOption;
 use Castor\Attribute\AsTask;
+use Sauron\Process\RunningProcess;
+use Sauron\Process\Scanner;
 use Sauron\Zed\Generator;
 use Sauron\Zed\Jsonc;
 
@@ -190,6 +192,101 @@ function install(#[AsOption(description: 'Print the commands without running the
     }
 
     return 0;
+}
+
+#[AsTask('memory', description: 'Show how much memory every running language server uses')]
+function memory(
+    #[AsOption(description: 'List every process instead of grouping by server')] bool $processes = false,
+): int {
+    $running = Scanner::scan();
+
+    if ([] === $running) {
+        io()->warning('No language server is running. Open a project in Zed first.');
+
+        return 0;
+    }
+
+    if ($processes) {
+        io()->table(['PID', 'Server', 'Memory', 'RSS', 'Worktree'], array_map(
+            static fn (RunningProcess $p) => [
+                $p->pid,
+                $p->serverId ?? '<fg=yellow>unmanaged</>',
+                mib($p->pssKb),
+                mib($p->rssKb),
+                short_path($p->workingDirectory ?? basename($p->executable)),
+            ],
+            $running,
+        ));
+
+        return report_total($running);
+    }
+
+    $grouped = [];
+    foreach ($running as $process) {
+        $key = $process->serverId ?? 'unmanaged:' . basename($process->executable);
+        $grouped[$key] ??= ['pss' => 0, 'rss' => 0, 'count' => 0];
+        $grouped[$key]['pss'] += $process->pssKb;
+        $grouped[$key]['rss'] += $process->rssKb;
+        ++$grouped[$key]['count'];
+    }
+
+    uasort($grouped, static fn (array $a, array $b) => $b['pss'] <=> $a['pss']);
+
+    $rows = [];
+    foreach ($grouped as $key => $totals) {
+        $unmanaged = str_starts_with($key, 'unmanaged:');
+        $server = $unmanaged ? null : Scanner::serverOf($key);
+
+        $rows[] = [
+            $unmanaged ? '<fg=yellow>' . substr($key, 10) . '</>' : $key,
+            null === $server ? '<fg=yellow>not in manifest</>' : $server->runtime->label(),
+            $totals['count'],
+            mib($totals['pss']),
+            mib($totals['rss']),
+        ];
+    }
+
+    io()->table(['Server', 'Runtime', 'Instances', 'Memory', 'RSS'], $rows);
+
+    return report_total($running);
+}
+
+/** @param list<RunningProcess> $running */
+function report_total(array $running): int
+{
+    $pss = array_sum(array_map(static fn (RunningProcess $p) => $p->pssKb, $running));
+    $rss = array_sum(array_map(static fn (RunningProcess $p) => $p->rssKb, $running));
+    $unmanaged = array_filter($running, static fn (RunningProcess $p) => null === $p->serverId);
+
+    io()->writeln(\sprintf(
+        ' <info>%s</> across %d processes (%s counting shared pages once per process)',
+        mib($pss),
+        \count($running),
+        mib($rss),
+    ));
+    io()->writeln(' Memory is PSS: pages shared between processes are split between them.');
+
+    if ([] !== $unmanaged) {
+        io()->writeln(\sprintf(
+            ' <comment>%s in %d process(es) belong to servers the manifest does not declare.</>',
+            mib(array_sum(array_map(static fn (RunningProcess $p) => $p->pssKb, $unmanaged))),
+            \count($unmanaged),
+        ));
+    }
+
+    return 0;
+}
+
+function mib(int $kb): string
+{
+    return $kb >= 1024 * 1024
+        ? \sprintf('%.1f GiB', $kb / 1024 / 1024)
+        : \sprintf('%d MiB', (int) round($kb / 1024));
+}
+
+function short_path(string $path): string
+{
+    return str_replace($_SERVER['HOME'], '~', $path);
 }
 
 #[AsTask(description: 'Check the manifest against the machine and the Zed registry')]

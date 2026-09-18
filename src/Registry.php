@@ -22,6 +22,7 @@ final class Registry
                 id: 'typos',
                 runtime: Runtime::Rust,
                 extension: 'typos',
+                process: 'typos-lsp',
                 note: 'spell checker, all languages',
             ),
         ];
@@ -46,6 +47,7 @@ final class Registry
             id: 'typescript-ls',
             runtime: Runtime::Go,
             extension: 'tsgo',
+            process: 'tsgo',
             note: 'TypeScript 7 native compiler (Go), replaces the tsserver Node process',
         );
 
@@ -61,6 +63,7 @@ final class Registry
         $symfony = new Server(
             id: 'symfony-language-tools',
             runtime: Runtime::Php,
+            process: 'symfony-lsp',
             devExtension: new DevExtension(
                 id: 'symfony-language-tools',
                 repository: 'https://github.com/symfony/language-tools.git',

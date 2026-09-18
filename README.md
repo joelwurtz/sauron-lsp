@@ -27,7 +27,13 @@ castor zed:generate --dry-run  # show what would change in ~/.config/zed/setting
 castor zed:generate            # apply it (keeps a timestamped backup)
 castor sauron:install          # install what Zed cannot fetch on its own
 castor sauron:doctor           # check binaries, config files, and extension slugs
+castor sauron:memory           # what every running server costs, --processes for detail
 ```
+
+`sauron:memory` reports PSS rather than RSS: several servers of the same kind
+share pages, and RSS bills those pages to each of them. It also surfaces servers
+running outside the manifest — the `"..."` fallback lets Zed start its own
+defaults behind ours, which is how phpactor once held a gigabyte.
 
 `zed:generate` only owns `auto_install_extensions`, `languages.*.language_servers`,
 `lsp.*` and `code_lens`. Everything else in `settings.json` is merged through
