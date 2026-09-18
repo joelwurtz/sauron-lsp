@@ -106,10 +106,20 @@ function generate(
         return 0;
     }
 
+    // A structure that does not survive its own encoding would silently corrupt
+    // the file, which is how `{}` once became `[]` and broke Zed.
+    $encoded = Jsonc::encode($merged);
+
+    if (Jsonc::decode($encoded) != $merged) {
+        io()->error('The generated settings do not round-trip; refusing to write.');
+
+        return 1;
+    }
+
     // Zed settings are JSONC; re-encoding drops the comments, so keep the original around.
     $backup = $path . '.bak.' . date('YmdHis');
     fs()->copy($path, $backup);
-    fs()->dumpFile($path, Jsonc::encode($merged));
+    fs()->dumpFile($path, $encoded);
 
     io()->success(\sprintf('%d settings written to %s', \count($changes), $path));
     io()->writeln(\sprintf(' Comments were dropped by the rewrite, previous file kept at <info>%s</>', $backup));

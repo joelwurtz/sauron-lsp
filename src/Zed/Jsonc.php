@@ -67,13 +67,38 @@ final class Jsonc
             return [];
         }
 
-        $decoded = json_decode($out, true, 512, \JSON_THROW_ON_ERROR);
+        $decoded = self::normalize(json_decode($out, false, 512, \JSON_THROW_ON_ERROR));
 
         if (!\is_array($decoded)) {
             throw new \RuntimeException('Expected a JSON object at the root.');
         }
 
         return $decoded;
+    }
+
+    /**
+     * PHP arrays cannot tell `{}` from `[]`, and Zed rejects a sequence where it
+     * wants a map. Maps that would re-encode as a JSON array come back as an
+     * ArrayObject, which still spreads and array-accesses like an array but
+     * always encodes as an object.
+     */
+    private static function normalize(mixed $value): mixed
+    {
+        if ($value instanceof \stdClass) {
+            $map = [];
+
+            foreach (get_object_vars($value) as $key => $item) {
+                $map[$key] = self::normalize($item);
+            }
+
+            return array_is_list($map) ? new \ArrayObject($map) : $map;
+        }
+
+        if (\is_array($value)) {
+            return array_map(self::normalize(...), $value);
+        }
+
+        return $value;
     }
 
     /** @param array<string, mixed> $data */
