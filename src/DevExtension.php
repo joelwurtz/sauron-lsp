@@ -2,6 +2,8 @@
 
 namespace Sauron;
 
+use Sauron\Zed\Host;
+
 /**
  * A Zed extension not published in the registry, so auto_install_extensions
  * cannot reach it. It has to be cloned locally and loaded through
@@ -21,7 +23,7 @@ final class DevExtension
 
     public function checkoutPath(): string
     {
-        return $_SERVER['HOME'] . '/.local/share/sauron-lsp/extensions/' . $this->id;
+        return Host::editorDataDir() . '/extensions/' . $this->id;
     }
 
     /** The directory to hand to `zed: install dev extension`. */

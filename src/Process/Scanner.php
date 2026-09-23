@@ -10,6 +10,7 @@ final class Scanner
     /** Where Zed keeps the servers it downloads itself. */
     private const ZED_DIRS = [
         '/.local/share/zed/extensions/work/',
+        '/.local/share/zed/remote_extensions/work/',
         '/.local/share/zed/languages/',
     ];
 

@@ -46,6 +46,34 @@ defaults behind ours, which is how phpactor once held a gigabyte.
 untouched — but because Zed writes JSONC and PHP cannot re-emit comments, the
 rewrite drops them. The previous file is always kept as `settings.json.bak.<date>`.
 
+## Zed on Windows, servers in WSL
+
+When Zed runs on Windows and opens projects in WSL, the editor stays on Windows
+but a `zed-remote-server` inside WSL spawns the language servers. Run every task
+from WSL: binaries, launchers and config files belong there.
+
+Settings then come from two files. The editor pushes its own
+`%APPDATA%\Zed\settings.json` to every remote it opens, and the remote server
+layers `~/.config/zed/settings.json` on top. `zed:generate` detects this setup
+(`WSL_DISTRO_NAME`, plus a Zed settings file on Windows) and splits its output:
+
+- `languages` and `lsp` go to the WSL file, created if missing. Pushed from
+  Windows, their Linux paths would also reach SSH remotes, where they do not exist.
+- `auto_install_extensions` and `code_lens` go to the Windows file: only the
+  editor reads them.
+
+Extensions are installed by the editor, then copied to
+`~/.local/share/zed/remote_extensions/`, and what they download lands in
+`remote_extensions/work/`. The tasks look there as well as in
+`~/.local/share/zed/extensions/`.
+
+The Symfony dev extension is built by the editor, on Windows: it needs
+`wasm32-wasip2` in the Windows `rustup`, and its sources cannot sit in WSL —
+building from `\\wsl.localhost\…` fails, cargo cannot lock its incremental
+compilation directory on that filesystem. `sauron:install` clones it to
+`%LOCALAPPDATA%\sauron-lsp\extensions\` instead, and prints the Windows path
+to hand to `zed: install dev extension`.
+
 ## Selection rule
 
 Prefer a compiled single binary — Rust, Go, Zig, C — over anything that boots a
@@ -76,8 +104,9 @@ JS/TS. It boots the application kernel, hence `workspaceTrust`.
 It is the one server that cannot be installed hands-free: it is not in Zed's
 registry, so `auto_install_extensions` has no reach. `sauron:install` adds the
 `wasm32-wasip2` Rust target it builds against and clones it to
-`~/.local/share/sauron-lsp/extensions/`, then you finish in Zed with
-`zed: install dev extension` pointed at the `editor/zed/` directory.
+`~/.local/share/sauron-lsp/extensions/` (on Windows when Zed runs there, see
+above), then you finish in Zed with `zed: install dev extension` pointed at the
+`editor/zed/` directory.
 `sauron:doctor` reports it as `MISS` until Zed has actually loaded it.
 
 It also stays silent on purpose outside a full-stack Symfony application: it
@@ -100,11 +129,19 @@ left alone.
 
 Two things the launcher has to be careful about. Nothing may reach stdout, which
 is the LSP stream, so every diagnostic goes to stderr prefixed with `[sauron]`.
+That includes castor's own: since 1.8 it prints a deprecation on stdout unless
+`CASTOR_USE_CHDIR` is defined, which is why `castor.php` defines it.
 And castor runs from this repository rather than from the project: castor loads
 the local plugins of the current directory even when `--castor-file` points
 elsewhere, so running it inside a project that builds its stack with
 `castor-php/docker` regenerates that project's compose files from definitions
 that were never loaded, emptying them.
+
+An application whose Composer dependencies are not installed cannot boot, and
+the server would raise an error on every start. The launcher sets
+`runtimeIndexing: false` for it, keeping source-only features; the next start
+after `composer install` turns it back on. A vendor directory kept in a Docker
+volume cannot be inspected from the host, so it is trusted.
 
 The command is `docker compose run --rm --no-deps`, not `exec`. The server boots
 the application to load routes and services, and `exec` needs the stack already
@@ -133,6 +170,7 @@ src/Registry.php    the manifest — the only file worth editing day to day
 src/Server.php      one language server: runtime, source, binary, config
 src/Language.php    one Zed language: ordered servers, disabled servers
 src/Zed/Generator.php  builds and merges the settings patch
+src/Zed/Host.php       where Zed keeps settings and extensions: here, or on Windows
 src/Zed/Jsonc.php      string-aware JSONC reader, because Zed's settings have comments
 ```
 

@@ -77,7 +77,7 @@ final class ProjectConfig
     /**
      * The compose service whose container sees a given application, if any.
      *
-     * @return array{service: string, containerRoot: string}|null
+     * @return array{service: string, containerRoot: string, volumes: list<string>}|null
      */
     public static function resolve(string $projectRoot, string $applicationRoot): ?array
     {
@@ -108,6 +108,7 @@ final class ProjectConfig
                 $candidates[] = [
                     'service' => $name,
                     'containerRoot' => $containerRoot,
+                    'volumes' => $service['volumes'],
                     'score' => $score,
                 ];
             }
@@ -123,10 +124,37 @@ final class ProjectConfig
                 <=> [$a['score'], \strlen($b['service']), $b['service']],
         );
 
-        return ['service' => $candidates[0]['service'], 'containerRoot' => $candidates[0]['containerRoot']];
+        return [
+            'service' => $candidates[0]['service'],
+            'containerRoot' => $candidates[0]['containerRoot'],
+            'volumes' => $candidates[0]['volumes'],
+        ];
     }
 
-    /** @param array{workingDir: ?string, mounts: array<string, string>, runsPhp: bool} $service */
+    /**
+     * Whether the application's Composer dependencies are there for the
+     * container to boot it. A vendor directory kept in a volume cannot be
+     * inspected from the host, so it is trusted.
+     *
+     * @param array{service: string, containerRoot: string, volumes: list<string>} $resolved
+     */
+    public static function hasDependencies(string $applicationRoot, array $resolved): bool
+    {
+        $composer = self::json(Path::join($applicationRoot, 'composer.json'));
+        $vendorDir = $composer['config']['vendor-dir'] ?? 'vendor';
+
+        if (!\is_string($vendorDir) || Path::isAbsolute($vendorDir)) {
+            return true;
+        }
+
+        if (\in_array(Path::join($resolved['containerRoot'], $vendorDir), $resolved['volumes'], true)) {
+            return true;
+        }
+
+        return is_file(Path::join($applicationRoot, $vendorDir, 'autoload.php'));
+    }
+
+    /** @param array{workingDir: ?string, mounts: array<string, string>, volumes: list<string>, runsPhp: bool} $service */
     private static function worksInsideAnApplication(array $service): bool
     {
         $hostWorkingDir = self::hostPath($service, $service['workingDir']);
@@ -134,7 +162,7 @@ final class ProjectConfig
         return null !== $hostWorkingDir && is_file(Path::join($hostWorkingDir, 'composer.json'));
     }
 
-    /** @param array{workingDir: ?string, mounts: array<string, string>, runsPhp: bool} $service */
+    /** @param array{workingDir: ?string, mounts: array<string, string>, volumes: list<string>, runsPhp: bool} $service */
     private static function hostPath(array $service, ?string $containerPath): ?string
     {
         if (null === $containerPath) {
@@ -176,6 +204,14 @@ final class ProjectConfig
                 'phpCommand' => ['docker', 'compose', 'run', '--rm', '--no-deps', '-T', $resolved['service'], 'php'],
                 'containerProjectRoot' => $resolved['containerRoot'],
             ];
+
+            // Booting an application without its dependencies fails, and the
+            // server raises an error on every start. Source-only features
+            // keep working; the next start after `composer install` turns
+            // runtime indexing back on.
+            if (!self::hasDependencies(Path::join($projectRoot, $root), $resolved)) {
+                $projects[$root]['runtimeIndexing'] = false;
+            }
         }
 
         $config = ['version' => 1];

@@ -69,6 +69,11 @@ final class Jsonc
 
         $decoded = self::normalize(json_decode($out, false, 512, \JSON_THROW_ON_ERROR));
 
+        // An empty root object, as Zed writes a fresh server settings file.
+        if ($decoded instanceof \ArrayObject) {
+            $decoded = $decoded->getArrayCopy();
+        }
+
         if (!\is_array($decoded)) {
             throw new \RuntimeException('Expected a JSON object at the root.');
         }

@@ -7,15 +7,41 @@ use Sauron\Registry;
 
 final class Generator
 {
+    /** Read by the editor itself: a remote server ignores them. */
+    public const EDITOR = ['auto_install_extensions', 'code_lens'];
+
+    /** Read where the language servers run. */
+    public const SERVER = ['languages', 'lsp'];
+
     /**
      * Top-level keys Sauron writes into. Anything else in settings.json is left
      * strictly alone, and even inside these we only own the sub-keys we emit.
      */
-    public const OWNED = ['auto_install_extensions', 'languages', 'lsp', 'code_lens'];
+    public const OWNED = [...self::EDITOR, ...self::SERVER];
 
-    public static function settingsPath(): string
+    /**
+     * The settings files to write, each with the top-level keys it owns.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function targets(): array
     {
-        return $_SERVER['HOME'] . '/.config/zed/settings.json';
+        $local = $_SERVER['HOME'] . '/.config/zed/settings.json';
+        $windows = Host::windowsSettingsPath();
+
+        if (null === $windows) {
+            return [$local => self::OWNED];
+        }
+
+        // Zed runs on Windows and pushes its settings.json to every remote it
+        // opens; the remote server then layers ~/.config/zed/settings.json on
+        // top. Server settings stay here, scoped to this machine: pushed from
+        // Windows they would also reach SSH remotes, where these paths do not
+        // exist.
+        return [
+            $local => self::SERVER,
+            $windows => self::EDITOR,
+        ];
     }
 
     /**
@@ -68,28 +94,31 @@ final class Generator
 
     /**
      * @param array<string, mixed> $current
+     * @param list<string>         $keys    the owned top-level keys to write
      *
      * @return array<string, mixed>
      */
-    public function merge(array $current): array
+    public function merge(array $current, array $keys = self::OWNED): array
     {
-        $patch = $this->patch();
+        $patch = array_intersect_key($this->patch(), array_flip($keys));
         $merged = $current;
 
-        $merged['auto_install_extensions'] = [
-            ...($current['auto_install_extensions'] ?? []),
-            ...$patch['auto_install_extensions'],
-        ];
+        if (isset($patch['auto_install_extensions'])) {
+            $merged['auto_install_extensions'] = [
+                ...($current['auto_install_extensions'] ?? []),
+                ...$patch['auto_install_extensions'],
+            ];
+        }
 
-        foreach ($patch['languages'] as $name => $config) {
+        foreach ($patch['languages'] ?? [] as $name => $config) {
             $merged['languages'][$name] = [...($current['languages'][$name] ?? []), ...$config];
         }
 
-        foreach ($patch['lsp'] as $id => $config) {
+        foreach ($patch['lsp'] ?? [] as $id => $config) {
             $merged['lsp'][$id] = $config;
         }
 
-        foreach (Registry::extraSettings() as $key => $value) {
+        foreach (array_intersect_key(Registry::extraSettings(), $patch) as $key => $value) {
             $merged[$key] = $value;
         }
 

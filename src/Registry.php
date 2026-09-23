@@ -2,6 +2,8 @@
 
 namespace Sauron;
 
+use Sauron\Zed\Host;
+
 /**
  * The manifest: one preferred language server per language.
  *
@@ -98,12 +100,20 @@ final class Registry
                 repository: 'https://github.com/symfony/language-tools.git',
                 path: 'editor/zed',
                 reason: 'not published in Zed\'s registry yet',
+                // Zed builds dev extensions with the toolchain of the machine
+                // it runs on, which is Windows when this is a WSL remote.
                 prerequisites: [
-                    new Prerequisite(
-                        label: 'Rust target wasm32-wasip2',
-                        check: 'rustup target list --installed | grep -qx wasm32-wasip2',
-                        command: 'rustup target add wasm32-wasip2',
-                    ),
+                    Host::isWindowsEditor()
+                        ? new Prerequisite(
+                            label: 'Rust target wasm32-wasip2 (Windows)',
+                            check: 'rustup.exe target list --installed | tr -d "\\r" | grep -qx wasm32-wasip2',
+                            command: 'rustup.exe target add wasm32-wasip2',
+                        )
+                        : new Prerequisite(
+                            label: 'Rust target wasm32-wasip2',
+                            check: 'rustup target list --installed | grep -qx wasm32-wasip2',
+                            command: 'rustup target add wasm32-wasip2',
+                        ),
                 ],
             ),
             // Zed starts a server in the worktree it serves, so the launcher can

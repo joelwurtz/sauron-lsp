@@ -17,7 +17,7 @@ final class Compose
     /**
      * Services declaring a bind mount, keyed by service name.
      *
-     * @return array<string, array{workingDir: ?string, mounts: array<string, string>, runsPhp: bool}>
+     * @return array<string, array{workingDir: ?string, mounts: array<string, string>, volumes: list<string>, runsPhp: bool}>
      */
     public static function services(string $projectRoot): array
     {
@@ -32,6 +32,7 @@ final class Compose
                 }
 
                 $mounts = self::mounts($service['volumes'] ?? [], $projectRoot, \dirname($file));
+                $volumes = self::volumes($service['volumes'] ?? []);
 
                 if ([] === $mounts && !isset($services[$name])) {
                     continue;
@@ -40,6 +41,7 @@ final class Compose
                 $services[$name] = [
                     'workingDir' => \is_string($service['working_dir'] ?? null) ? $service['working_dir'] : ($services[$name]['workingDir'] ?? null),
                     'mounts' => [...($services[$name]['mounts'] ?? []), ...$mounts],
+                    'volumes' => [...($services[$name]['volumes'] ?? []), ...$volumes],
                     'runsPhp' => self::runsPhp($service) || ($services[$name]['runsPhp'] ?? false),
                 ];
             }
@@ -115,6 +117,40 @@ final class Compose
         }
 
         return $mounts;
+    }
+
+    /**
+     * Container directories backed by a volume rather than by the host: what
+     * the container finds there cannot be read from here.
+     *
+     * @return list<string>
+     */
+    private static function volumes(mixed $volumes): array
+    {
+        $targets = [];
+
+        foreach (\is_array($volumes) ? $volumes : [] as $volume) {
+            if (\is_string($volume)) {
+                $parts = explode(':', $volume);
+
+                // `/path` alone is an anonymous volume, `name:/path` a named one.
+                if (\count($parts) >= 2 && (str_starts_with($parts[0], '/') || str_starts_with($parts[0], '.'))) {
+                    continue;
+                }
+
+                $target = $parts[\count($parts) >= 2 ? 1 : 0];
+            } elseif (\is_array($volume) && 'volume' === ($volume['type'] ?? null)) {
+                $target = $volume['target'] ?? null;
+            } else {
+                continue;
+            }
+
+            if (\is_string($target) && str_starts_with($target, '/')) {
+                $targets[] = rtrim($target, '/');
+            }
+        }
+
+        return $targets;
     }
 
     /** @return list<string> */

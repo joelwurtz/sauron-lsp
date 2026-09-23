@@ -2,6 +2,7 @@
 
 namespace Sauron\Symfony;
 
+use Sauron\Zed\Host;
 use Symfony\Component\Filesystem\Path;
 
 /**
@@ -43,7 +44,12 @@ final class Wrapper
      */
     public static function serverBinary(): ?string
     {
-        $candidates = glob($_SERVER['HOME'] . '/.local/share/zed/extensions/work/symfony-language-tools/*/*/symfony-lsp') ?: [];
+        $candidates = [];
+
+        foreach (Host::workDirs() as $dir) {
+            $candidates = [...$candidates, ...(glob($dir . '/symfony-language-tools/*/*/symfony-lsp') ?: [])];
+        }
+
         rsort($candidates);
 
         foreach ($candidates as $candidate) {

@@ -8,6 +8,7 @@ use Sauron\Process\RunningProcess;
 use Sauron\Process\Scanner;
 use Sauron\Symfony\Wrapper;
 use Sauron\Zed\Generator;
+use Sauron\Zed\Host;
 use Sauron\Zed\Jsonc;
 
 use function Castor\context;
@@ -18,6 +19,11 @@ use function Castor\io;
 use function Castor\run;
 
 guard_min_version('1.7.0');
+
+// Castor 1.8 warns on stdout when this is left undefined, and stdout is the LSP
+// stream when the Symfony launcher runs castor. Tasks never rely on castor
+// moving the current directory: `lsp:symfony:wrap` falls back to getcwd().
+\defined('CASTOR_USE_CHDIR') || \define('CASTOR_USE_CHDIR', false);
 
 import(__DIR__ . '/src');
 
@@ -66,16 +72,26 @@ function generate(
     #[AsOption(description: 'Show the changes without writing anything')] bool $dryRun = false,
     #[AsOption(description: 'Write somewhere else than the real Zed settings')] ?string $path = null,
 ): int {
-    $path ??= Generator::settingsPath();
     $generator = new Generator();
+    $targets = null === $path ? Generator::targets() : [$path => Generator::OWNED];
+    $status = 0;
 
-    if (!is_file($path)) {
-        io()->error(\sprintf('No Zed settings at %s.', $path));
+    foreach ($targets as $target => $keys) {
+        if (\count($targets) > 1) {
+            io()->section(short_path($target));
+        }
 
-        return 1;
+        $status = max($status, write_settings($generator, $target, $keys, $dryRun));
     }
 
-    $raw = file_get_contents($path);
+    return $status;
+}
+
+/** @param list<string> $keys */
+function write_settings(Generator $generator, string $path, array $keys, bool $dryRun): int
+{
+    // Zed only creates the settings of a remote server on demand.
+    $raw = is_file($path) ? file_get_contents($path) : '';
 
     try {
         $current = Jsonc::decode($raw);
@@ -85,7 +101,7 @@ function generate(
         return 1;
     }
 
-    $merged = $generator->merge($current);
+    $merged = $generator->merge($current, $keys);
     $changes = $generator->changes($current, $merged);
 
     if ([] === $changes) {
@@ -99,8 +115,10 @@ function generate(
         $changes,
     ));
 
-    foreach ($generator->stale($current) as $id) {
-        io()->warning(\sprintf('lsp.%s is left over from a previous setup: that server is now disabled everywhere.', $id));
+    if (\in_array('lsp', $keys, true)) {
+        foreach ($generator->stale($current) as $id) {
+            io()->warning(\sprintf('lsp.%s is left over from a previous setup: that server is now disabled everywhere.', $id));
+        }
     }
 
     if ($dryRun) {
@@ -120,12 +138,20 @@ function generate(
     }
 
     // Zed settings are JSONC; re-encoding drops the comments, so keep the original around.
-    $backup = $path . '.bak.' . date('YmdHis');
-    fs()->copy($path, $backup);
+    $backup = null;
+
+    if (is_file($path)) {
+        $backup = $path . '.bak.' . date('YmdHis');
+        fs()->copy($path, $backup);
+    }
+
     fs()->dumpFile($path, $encoded);
 
     io()->success(\sprintf('%d settings written to %s', \count($changes), $path));
-    io()->writeln(\sprintf(' Comments were dropped by the rewrite, previous file kept at <info>%s</>', $backup));
+
+    if (null !== $backup) {
+        io()->writeln(\sprintf(' Comments were dropped by the rewrite, previous file kept at <info>%s</>', $backup));
+    }
 
     return 0;
 }
@@ -189,7 +215,7 @@ function install(#[AsOption(description: 'Print the commands without running the
         }
 
         io()->writeln(' In Zed: run <info>zed: install dev extension</> and select:');
-        io()->writeln(' <info>' . $extension->extensionPath() . '</>');
+        io()->writeln(' <info>' . Host::editorPath($extension->extensionPath()) . '</>');
     }
 
     return 0;
@@ -410,7 +436,7 @@ function doctor(): int
             ));
         }
 
-        $loaded = is_dir($_SERVER['HOME'] . '/.local/share/zed/extensions/installed/' . $extension->id);
+        $loaded = Host::hasExtension($extension->id);
 
         if (!$loaded) {
             ++$problems;
@@ -420,7 +446,7 @@ function doctor(): int
             ' %s %-24s %s',
             $loaded ? '<info>OK</>  ' : '<fg=red>MISS</>',
             $extension->id,
-            $loaded ? 'loaded by Zed' : 'not loaded: run `zed: install dev extension` on ' . $extension->extensionPath(),
+            $loaded ? 'loaded by Zed' : 'not loaded: run `zed: install dev extension` on ' . Host::editorPath($extension->extensionPath()),
         ));
     }
 
